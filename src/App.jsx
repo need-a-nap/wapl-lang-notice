@@ -1,374 +1,287 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Download, Settings, Image as ImageIcon, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
-
-// 유틸: 둥근 직사각형 그리기
-function roundRect(ctx, x, y, width, height, radius) {
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + width - radius, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-  ctx.lineTo(x + width, y + height - radius);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  ctx.lineTo(x + radius, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
-}
-
-export default function App() {
-  const canvasRef = useRef(null);
-  
-  // 상태 관리
-  const [bgImgObj, setBgImgObj] = useState(null);
-  const [qrImgObj, setQrImgObj] = useState(null);
-  const [qrLoaded, setQrLoaded] = useState(false);
-  const [fontsLoaded, setFontsLoaded] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  
-  // 폼 입력 데이터
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
-  const [link, setLink] = useState('https://forms.google.com/');
-  const [badgeColor, setBadgeColor] = useState('#E13E30'); // 원본 이미지와 비슷한 빨간색
-  
-  // 좌표 및 크기 상태 (1080x1080 비율 기준 기본값)
-  const [pos, setPos] = useState({
-    badge: { x: 770, y: 245, w: 220, h: 100, radius: 25 },
-    textRegion: { x: 535, y: 620, w: 240, h: 100 },
-    text: { x: 540, y: 660 },
-    qr: { x: 790, y: 620, size: 100 }
-  });
-
-  // 폰트 로딩 대기
-  useEffect(() => {
-    document.fonts.ready.then(() => setFontsLoaded(true));
-  }, []);
-
-  // qrcode.js 라이브러리 동적 로드
-  useEffect(() => {
-    if (window.QRCode) {
-      setQrLoaded(true);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js';
-    script.onload = () => setQrLoaded(true);
-    document.body.appendChild(script);
-  }, []);
-
-  // QR 코드 이미지 생성
-  useEffect(() => {
-    if (qrLoaded && window.QRCode && link) {
-      window.QRCode.toDataURL(link, { margin: 1, width: 300 }, (err, url) => {
-        if (!err) {
-          const img = new Image();
-          img.onload = () => setQrImgObj(img);
-          img.src = url;
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>와플어학당 공지 생성기</title>
+    <!-- 구글 폰트 (Jua: Rix이누아리두리체 대체용) -->
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* CSS 폰트 정의 - 브라우저 캐싱 유도 */
+        @font-face {
+            font-family: 'RixInuAriduri';
+            src: local('Rix이누아리두리체'), local('RixInuAriduriR'), 
+                 url('https://fonts.gstatic.com/s/jua/v15/7VmY5z9b_O3p_G0.woff2') format('woff2');
         }
-      });
-    }
-  }, [link, qrLoaded]);
 
-  // 배경 이미지 업로드 핸들러
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => setBgImgObj(img);
-        img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+        @font-face {
+            font-family: 'GongFont';
+            src: local('공체 Light'), local('GongChe L'), local('GongChe'),
+                 url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_20-10@1.0/Gong.woff') format('woff');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
 
-  // 캔버스 드로잉 로직
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !bgImgObj || !fontsLoaded) return;
-    
-    canvas.width = bgImgObj.width;
-    canvas.height = bgImgObj.height;
-    
-    const scaleX = bgImgObj.width / 1080;
-    const scaleY = bgImgObj.height / 1080;
+        body {
+            background-color: #f3f4f6;
+            font-family: 'Pretendard', sans-serif;
+        }
+        canvas {
+            max-width: 100%;
+            height: auto;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
 
-    const ctx = canvas.getContext('2d');
-    
-    // 1. 원본 배경 그리기
-    ctx.drawImage(bgImgObj, 0, 0, canvas.width, canvas.height);
-    
-    ctx.save();
-    ctx.scale(scaleX, scaleY);
-
-    // ============================================
-    // 2. 우측 상단 '월' 뱃지 덮어쓰기 & 새 텍스트
-    // ============================================
-    ctx.fillStyle = badgeColor;
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 5;
-    roundRect(ctx, pos.badge.x, pos.badge.y, pos.badge.w, pos.badge.h, pos.badge.radius);
-    ctx.fill();
-    ctx.stroke();
-    
-    ctx.fillStyle = '#FFFFFF';
-    // 모두 Noto Sans KR 통일 (가장 두꺼운 900 굵기 사용)
-    ctx.font = "900 60px 'Noto Sans KR', sans-serif";
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineWidth = 7;
-    ctx.strokeStyle = '#000000';
-    
-    const badgeTextX = pos.badge.x + pos.badge.w / 2;
-    const badgeTextY = pos.badge.y + pos.badge.h / 2 + 5;
-    
-    ctx.strokeText(`${month}월`, badgeTextX, badgeTextY);
-    ctx.fillText(`${month}월`, badgeTextX, badgeTextY);
-
-    // ============================================
-    // 3. 중앙 '신청하기' 영역 덮어쓰기
-    // ============================================
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(pos.textRegion.x, pos.textRegion.y, pos.textRegion.w, pos.textRegion.h);
-
-    // 4. 신청 관련 새 텍스트 작성
-    ctx.fillStyle = '#000000';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    
-    ctx.font = "700 22px 'Noto Sans KR', sans-serif";
-    ctx.fillText(`${month}월 학습 신청하기 〉〉〉`, pos.text.x, pos.text.y);
-    
-    const lastDay = new Date(year, month, 0).getDate();
-    ctx.font = "500 18px 'Noto Sans KR', sans-serif";
-    ctx.fillText(`*학습일 : ${month}/1~${month}/${lastDay}`, pos.text.x, pos.text.y + 35);
-
-    // ============================================
-    // 5. QR 코드 영역 덮어쓰기 & 새 QR 그리기
-    // ============================================
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(pos.qr.x, pos.qr.y, pos.qr.size, pos.qr.size);
-    if (qrImgObj) {
-      ctx.drawImage(qrImgObj, pos.qr.x, pos.qr.y, pos.qr.size, pos.qr.size);
-    }
-    
-    ctx.restore();
-
-  }, [bgImgObj, qrImgObj, year, month, pos, badgeColor, fontsLoaded]);
-
-  const updatePos = (category, field, value) => {
-    setPos(prev => ({
-      ...prev,
-      [category]: { ...prev[category], [field]: Number(value) }
-    }));
-  };
-
-  const handleDownload = () => {
-    if (!canvasRef.current) return;
-    const link = document.createElement('a');
-    link.download = `와플어학당_공지_${month}월.png`;
-    link.href = canvasRef.current.toDataURL('image/png');
-    link.click();
-  };
-
-  const RangeInput = ({ label, value, onChange, max=1080 }) => (
-    <div className="flex items-center text-sm mt-2">
-      <span className="w-10 text-gray-700 font-medium">{label}</span>
-      <input 
-        type="range" min="0" max={max} value={value} 
-        onChange={e => onChange(e.target.value)} 
-        className="flex-1 mx-2 h-2 bg-yellow-200 rounded-lg appearance-none cursor-pointer accent-yellow-500" 
-      />
-      <span className="w-12 text-right text-gray-600 font-mono bg-white px-1 rounded border border-gray-100">{value}</span>
+        /* 실제 텍스트가 화면에 있어야 브라우저가 로딩 우선순위를 높임 */
+        .font-preload {
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <!-- 폰트 로딩 강제 유도용 숨김 요소 -->
+    <div class="font-preload">
+        <span style="font-family: 'RixInuAriduri'; font-weight: bold;">Rix Font</span>
+        <span style="font-family: 'GongFont';">Gong Font</span>
     </div>
-  );
 
-  return (
-    <div className="min-h-screen bg-[#FFFDF5] p-4 md:p-8" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
-      <style>
-        {`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');`}
-      </style>
-
-      <div className="max-w-6xl mx-auto">
-        <header className="mb-10 text-center">
-          <div className="inline-block bg-yellow-400 text-yellow-900 px-4 py-1.5 rounded-full text-sm font-bold mb-3 shadow-sm">
-            와이지플러스 어학지원제도
-          </div>
-          <h1 className="text-3xl md:text-4xl font-black text-gray-800 tracking-tight">와플어학당 공지 자동 생성기</h1>
-          <p className="text-gray-500 mt-3 font-medium">단 1분 만에 매월 바뀌는 새로운 공지문을 만들어보세요.</p>
+    <div class="max-w-5xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">와플어학당 공지 생성기</h1>
+            <p class="text-gray-600 font-medium text-sm">폰트가 보이지 않을 경우 1~2초 후 '이미지 생성하기'를 다시 눌러주세요.</p>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* 좌측: 제어 패널 */}
-          <div className="lg:col-span-5 space-y-6">
-            
-            {/* Step 1 */}
-            <div className={`bg-white p-6 rounded-2xl shadow-sm border ${bgImgObj ? 'border-green-200 bg-green-50/30' : 'border-yellow-300'}`}>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-800 flex items-center">
-                  <span className={`inline-flex items-center justify-center w-7 h-7 mr-2 rounded-full text-sm font-bold ${bgImgObj ? 'bg-green-500 text-white' : 'bg-yellow-400 text-yellow-900'}`}>1</span>
-                  템플릿 이미지 로드
-                </h2>
-                {bgImgObj && <CheckCircle className="w-6 h-6 text-green-500" />}
-              </div>
-              <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-xl cursor-pointer transition-colors bg-gray-50 hover:bg-yellow-50 hover:border-yellow-400 border-gray-300">
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <Upload className="w-10 h-10 text-yellow-500 mb-3" />
-                  <p className="text-sm text-gray-600 font-bold">클릭하여 이미지 업로드 (PNG, JPG)</p>
-                  <p className="text-xs text-gray-400 mt-1">기존에 사용하던 공지문 원본을 올려주세요.</p>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- 설정 패널 -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm space-y-6">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">1. 양식 이미지 업로드</label>
+                    <input type="file" id="templateUpload" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100">
                 </div>
-                <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
-              </label>
-            </div>
 
-            {/* Step 2 */}
-            <div className={`bg-white p-6 rounded-2xl shadow-sm border border-yellow-200 transition-opacity ${!bgImgObj ? 'opacity-50 pointer-events-none' : ''}`}>
-              <h2 className="text-lg font-bold text-gray-800 mb-5 flex items-center">
-                <span className="inline-flex items-center justify-center w-7 h-7 mr-2 bg-yellow-400 text-yellow-900 rounded-full text-sm font-bold">2</span>
-                공지 내용 수정
-              </h2>
-              
-              <div className="space-y-5">
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <label className="block text-sm font-bold text-gray-700 mb-2">적용 연도</label>
-                    <input 
-                      type="number" 
-                      value={year} 
-                      onChange={(e) => setYear(Number(e.target.value))}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 focus:bg-white outline-none transition-all font-medium"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-sm font-bold text-gray-700 mb-2">공지 월 (Month)</label>
-                    <select 
-                      value={month} 
-                      onChange={(e) => setMonth(Number(e.target.value))}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 focus:bg-white outline-none transition-all font-medium appearance-none cursor-pointer"
-                    >
-                      {[...Array(12)].map((_, i) => (
-                        <option key={i + 1} value={i + 1}>{i + 1}월</option>
-                      ))}
-                    </select>
-                  </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">2. 연도 선택</label>
+                        <select id="yearSelect" class="w-full p-2 border rounded-lg outline-none">
+                            <option value="2025" selected>2025년</option>
+                            <option value="2026">2026년</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">3. 월 선택</label>
+                        <select id="monthSelect" class="w-full p-2 border rounded-lg outline-none">
+                            <script>
+                                for(let i=1; i<=12; i++) {
+                                    const selected = i === new Date().getMonth() + 1 ? 'selected' : '';
+                                    document.write(`<option value="${i}" ${selected}>${i}월</option>`);
+                                }
+                            </script>
+                        </select>
+                    </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">신청 폼 링크 (자동 QR 생성)</label>
-                  <input 
-                    type="url" 
-                    value={link} 
-                    onChange={(e) => setLink(e.target.value)}
-                    placeholder="https://forms.google.com/..."
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 focus:bg-white outline-none transition-all text-sm"
-                  />
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">4. QR 코드 연결 URL</label>
+                    <input type="text" id="qrUrl" class="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-orange-500" value="https://example.com/apply">
                 </div>
-              </div>
 
-              {/* 고급 설정 아코디언 */}
-              <div className="mt-6 border-t border-gray-100 pt-5">
-                <button 
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="flex items-center justify-between w-full text-sm font-bold text-gray-500 hover:text-yellow-600 transition-colors p-2 rounded-lg hover:bg-yellow-50"
-                >
-                  <span className="flex items-center"><Settings className="w-4 h-4 mr-2" /> 덮어쓰기 위치/크기 미세 조정</span>
-                  {showAdvanced ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                </button>
-                
-                {showAdvanced && (
-                  <div className="mt-4 space-y-5 bg-[#FFFDF5] p-5 rounded-xl border border-yellow-100">
-                    <div className="bg-yellow-100 text-yellow-800 text-xs p-3 rounded-lg mb-2 font-medium">
-                      💡 원본 이미지의 비율이나 디자인이 조금 다를 경우 아래 슬라이더를 움직여 덮어쓰는 영역을 딱 맞게 조절하세요.
-                    </div>
-                    
-                    <div>
-                      <label className="text-sm font-bold text-gray-700 flex justify-between items-center mb-1">
-                        우측 상단 N월 뱃지 박스
-                        <div className="flex items-center gap-2 text-xs">
-                          배경색: <input type="color" value={badgeColor} onChange={e=>setBadgeColor(e.target.value)} className="w-6 h-6 rounded cursor-pointer border-0" />
-                        </div>
-                      </label>
-                      <RangeInput label="가로(X)" value={pos.badge.x} onChange={(v) => updatePos('badge', 'x', v)} />
-                      <RangeInput label="세로(Y)" value={pos.badge.y} onChange={(v) => updatePos('badge', 'y', v)} />
-                      <RangeInput label="너비" value={pos.badge.w} max="400" onChange={(v) => updatePos('badge', 'w', v)} />
-                      <RangeInput label="높이" value={pos.badge.h} max="300" onChange={(v) => updatePos('badge', 'h', v)} />
-                    </div>
-                    
-                    <hr className="border-gray-200"/>
+                <div class="pt-4">
+                    <button id="generateBtn" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg active:scale-95">
+                        이미지 생성하기
+                    </button>
+                </div>
 
-                    <div>
-                      <label className="text-sm font-bold text-gray-700 mb-1 block">기존 텍스트 지우기 (흰색 박스 영역)</label>
-                      <RangeInput label="가로(X)" value={pos.textRegion.x} onChange={(v) => updatePos('textRegion', 'x', v)} />
-                      <RangeInput label="세로(Y)" value={pos.textRegion.y} onChange={(v) => updatePos('textRegion', 'y', v)} />
-                      <RangeInput label="너비" value={pos.textRegion.w} max="500" onChange={(v) => updatePos('textRegion', 'w', v)} />
-                      <RangeInput label="높이" value={pos.textRegion.h} max="300" onChange={(v) => updatePos('textRegion', 'h', v)} />
-                    </div>
-                    
-                    <hr className="border-gray-200"/>
-
-                    <div>
-                      <label className="text-sm font-bold text-gray-700 mb-1 block">새 텍스트 시작 위치</label>
-                      <RangeInput label="가로(X)" value={pos.text.x} onChange={(v) => updatePos('text', 'x', v)} />
-                      <RangeInput label="세로(Y)" value={pos.text.y} onChange={(v) => updatePos('text', 'y', v)} />
-                    </div>
-
-                    <hr className="border-gray-200"/>
-
-                    <div>
-                      <label className="text-sm font-bold text-gray-700 mb-1 block">QR 코드 덮어쓰기 영역</label>
-                      <RangeInput label="가로(X)" value={pos.qr.x} onChange={(v) => updatePos('qr', 'x', v)} />
-                      <RangeInput label="세로(Y)" value={pos.qr.y} onChange={(v) => updatePos('qr', 'y', v)} />
-                      <RangeInput label="크기" value={pos.qr.size} max="300" onChange={(v) => updatePos('qr', 'size', v)} />
-                    </div>
-                  </div>
-                )}
-              </div>
+                <div class="pt-2">
+                    <button id="downloadBtn" disabled class="w-full bg-gray-800 hover:bg-black text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg disabled:opacity-30 disabled:cursor-not-allowed">
+                        이미지 다운로드
+                    </button>
+                </div>
             </div>
 
-            {/* Step 3 */}
-            <div className={`transition-opacity ${!bgImgObj ? 'opacity-50 pointer-events-none' : ''}`}>
-              <button 
-                onClick={handleDownload}
-                className="w-full bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-black text-lg py-4 px-4 rounded-2xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all transform hover:-translate-y-1"
-              >
-                <Download className="w-6 h-6 mr-2" />
-                완성된 이미지 다운로드
-              </button>
-            </div>
-          </div>
-
-          {/* 우측: 미리보기 캔버스 */}
-          <div className="lg:col-span-7 flex flex-col">
-            <div className="bg-white p-4 md:p-6 rounded-3xl shadow-md border border-yellow-200 flex-1 flex flex-col items-center justify-center min-h-[500px] relative">
-              
-              <div className="absolute top-4 left-4 bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg text-sm font-bold flex items-center shadow-sm z-10">
-                <ImageIcon className="w-4 h-4 mr-1.5" /> 미리보기 화면
-              </div>
-
-              {!bgImgObj ? (
-                <div className="text-center p-12">
-                  <div className="w-24 h-24 bg-yellow-50 text-yellow-300 rounded-full flex items-center justify-center mx-auto mb-5">
-                    <ImageIcon className="w-10 h-10" />
-                  </div>
-                  <h3 className="text-xl font-bold text-gray-700 mb-2">여기에 이미지가 표시됩니다</h3>
-                  <p className="text-gray-500">좌측 패널 1번에서 템플릿 이미지를 먼저 업로드해주세요.</p>
+            <!-- 프리뷰 패널 -->
+            <div class="lg:col-span-2 flex flex-col items-center justify-start">
+                <div id="canvasContainer" class="w-full flex justify-center bg-gray-200 rounded-2xl p-4 min-h-[400px] items-center overflow-hidden">
+                    <p id="placeholderText" class="text-gray-500 font-medium text-center">양식 이미지를 업로드하고<br>'이미지 생성하기'를 눌러주세요.</p>
+                    <canvas id="mainCanvas" style="display:none;"></canvas>
                 </div>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center mt-8">
-                  <canvas 
-                    ref={canvasRef} 
-                    className="max-w-full h-auto rounded-xl shadow-sm border border-gray-100 object-contain"
-                    style={{ maxHeight: '75vh' }}
-                  />
-                </div>
-              )}
+                <div id="qrcode" style="display:none;"></div>
             </div>
-          </div>
-          
         </div>
-      </div>
     </div>
-  );
-}
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const templateUpload = document.getElementById('templateUpload');
+        const generateBtn = document.getElementById('generateBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const placeholderText = document.getElementById('placeholderText');
+        const qrcodeContainer = document.getElementById('qrcode');
+
+        let templateImg = null;
+
+        // 폰트 강제 로딩 함수 - 네트워크 에러 방지를 위해 여러 경로 시도 및 예외 처리
+        async function loadWebFont(name, url) {
+            try {
+                const font = new FontFace(name, `url(${url})`);
+                const loadedFont = await font.load();
+                document.fonts.add(loadedFont);
+                return true;
+            } catch (err) {
+                console.warn(`Font load failed from ${url}:`, err);
+                return false;
+            }
+        }
+
+        // 초기 실행 시 공체 폰트 로드 시도 (cdn.jsdelivr.net 사용)
+        loadWebFont('GongFont', 'https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_20-10@1.0/Gong.woff');
+
+        templateUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    templateImg = img;
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    canvas.style.display = 'block';
+                    placeholderText.style.display = 'none';
+                    draw();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function getLastDay(year, month) {
+            return new Date(year, month, 0).getDate();
+        }
+
+        async function draw() {
+            if (!templateImg) return;
+
+            // 폰트가 준비될 때까지 대기
+            try {
+                await document.fonts.ready;
+            } catch (e) {
+                console.log("Font matching might not be perfect yet, continuing draw...");
+            }
+
+            const year = parseInt(document.getElementById('yearSelect').value);
+            const month = parseInt(document.getElementById('monthSelect').value);
+            const url = document.getElementById('qrUrl').value;
+            const lastDay = getLastDay(year, month);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(templateImg, 0, 0);
+
+            // 1. 상단 월 제목 (Rix이누아리두리체 / Jua)
+            const monthText = `${month}월`;
+            const titleX = canvas.width * 0.87;
+            const titleY = canvas.height * 0.35;
+            
+            ctx.save();
+            ctx.translate(titleX, titleY);
+            ctx.rotate(10 * Math.PI / 180);
+            
+            ctx.font = `bold 100px "RixInuAriduri", "Jua", sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineJoin = 'round';
+
+            // 외곽선 90
+            ctx.strokeStyle = '#fc5230';
+            ctx.lineWidth = 90;
+            ctx.strokeText(monthText, 0, 0);
+            ctx.fillStyle = '#fc5230';
+            ctx.fillText(monthText, 0, 0);
+
+            // 위쪽 레이어 외곽선 20
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 20;
+            ctx.strokeText(monthText, 0, 0);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(monthText, 0, 0);
+            ctx.restore();
+
+            // 2. 중간 우측 텍스트 (공체 - 볼드 제거)
+            ctx.save();
+            const textStartX = canvas.width * 0.54;
+            const textStartY = (canvas.height * 0.655) + 15;
+            const lineHeight = 40;
+            
+            ctx.fillStyle = '#333';
+            ctx.textAlign = 'left';
+            
+            // 자간 설정 -5px
+            if ('letterSpacing' in ctx) {
+                ctx.letterSpacing = "-5px";
+            }
+
+            // 첫 번째 줄: n월 학습 신청하기
+            ctx.save();
+            ctx.font = `30px "GongFont", sans-serif`;
+            ctx.translate(textStartX, textStartY);
+            ctx.scale(0.95, 1); // 장평 95
+            ctx.fillText(`${month}월 학습 신청하기 >>>`, 0, 0);
+            ctx.restore();
+
+            // 두 번째 줄: 학습일 정보
+            ctx.save();
+            ctx.font = `25px "GongFont", sans-serif`;
+            ctx.translate(textStartX, textStartY + lineHeight);
+            ctx.scale(0.95, 1); // 장평 95
+            ctx.fillText(`*학습일 : ${month}/1~${month}/${lastDay}`, 0, 0);
+            ctx.restore();
+            
+            ctx.restore();
+
+            // 3. QR 코드 (70% 사이즈)
+            const baseQrSize = 140;
+            const targetQrSize = Math.floor(baseQrSize * 0.7);
+            
+            qrcodeContainer.innerHTML = '';
+            const qrcode = new QRCode(qrcodeContainer, {
+                text: url,
+                width: targetQrSize,
+                height: targetQrSize,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            // QR 이미지가 생성된 후 캔버스에 그리기
+            setTimeout(() => {
+                const qrImg = qrcodeContainer.querySelector('img');
+                if (qrImg) {
+                    const offset = (baseQrSize - targetQrSize) / 2;
+                    const qrX = (canvas.width * 0.745) + offset;
+                    const qrY = (canvas.height * 0.615) + offset;
+                    ctx.drawImage(qrImg, qrX, qrY, targetQrSize, targetQrSize);
+                    downloadBtn.disabled = false;
+                }
+            }, 300);
+        }
+
+        generateBtn.addEventListener('click', draw);
+
+        downloadBtn.addEventListener('click', () => {
+            const year = document.getElementById('yearSelect').value;
+            const month = document.getElementById('monthSelect').value;
+            const link = document.createElement('a');
+            link.download = `와플어학당_공지_${year}_${month}월.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        });
+    </script>
+</body>
+</html>
